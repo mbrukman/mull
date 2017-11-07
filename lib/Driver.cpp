@@ -104,7 +104,8 @@ std::unique_ptr<Result> Driver::Run() {
     ObjectFile *objectFile = toolchain.cache().getObject(module);
 
     if (objectFile == nullptr) {
-      auto owningObjectFile = toolchain.compiler().compileModule(*module.clone().get());
+      LLVMContext localContext;
+      auto owningObjectFile = toolchain.compiler().compileModule(*module.clone(localContext).get());
       objectFile = owningObjectFile.getBinary();
       toolchain.cache().putObject(std::move(owningObjectFile), module);
     }

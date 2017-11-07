@@ -33,9 +33,7 @@ static std::string fixturePath(const char *fixtureName) {
   return fixtureFullPath;
 }
 
-static std::string createFixture(const char *fixtureName) {
-  std::string fixtureFullPath = fixturePath(fixtureName);
-
+static std::string createFixture(const std::string &fixtureFullPath) {
   if (fileExists(fixtureFullPath) == false) {
     mull::Logger::debug() << "Could not find a fixture at path: "
                           << fixtureFullPath << '\n';
@@ -94,13 +92,14 @@ std::unique_ptr<MullModule> TestModuleFactory::create_SimpleTest_MathDiv_module(
 std::unique_ptr<MullModule>
 TestModuleFactory::createModule(const char *fixtureName,
                                 const char *moduleIdentifier) {
-  std::string contents = createFixture(fixtureName);
+  std::string fixtureFullPath = fixturePath(fixtureName);
+  std::string contents = createFixture(fixtureFullPath);
   
   auto module = parseIR(contents.c_str());
   
   module->setModuleIdentifier(moduleIdentifier);
 
-  return make_unique<MullModule>(std::move(module), "");
+  return make_unique<MullModule>(std::move(module), "", fixtureFullPath);
 }
 
 std::unique_ptr<MullModule> TestModuleFactory::create_SimpleTest_NegateCondition_Tester_Module() {
