@@ -26,6 +26,10 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <malloc/malloc.h>
+
 using namespace llvm;
 using namespace llvm::object;
 using namespace mull;
@@ -33,6 +37,21 @@ using namespace std;
 using namespace std::chrono;
 
 namespace mull {
+
+  void reportMemory(const char *context) {
+    struct rusage usage;
+    int r = getrusage(RUSAGE_SELF, &usage);
+    if (r == -1) {
+      perror("rusage");
+      return;
+    }
+    struct mstats st = mstats();
+
+    printf("\n>> [%s] maxrss     : %ld", context, usage.ru_maxrss);
+    printf("\n>> [%s] bytes_total: %ld", context, st.bytes_total / 1024 / 1024);
+    printf("\n>> [%s] bytes_used : %ld", context, st.bytes_used / 1024 / 1024);
+    printf("\n>> [%s] bytes_free : %ld\n\n", context, st.bytes_free / 1024 / 1024);
+  }
 
 extern "C" void mull_enterFunction(Driver *driver, uint64_t functionIndex) {
   assert(driver);
@@ -205,21 +224,18 @@ std::unique_ptr<Result> Driver::Run() {
           result.status = DryRun;
           result.runningTime = ExecResult.runningTime * 10;
         } else {
-          ObjectFile *mutant = toolchain.cache().getObject(*mutationPoint);
-          if (mutant == nullptr) {
-            LLVMContext localContext;
-            auto clonedModule = mutationPoint->getOriginalModule()->clone(localContext);
-            mutationPoint->applyMutation(*clonedModule.get());
+          LLVMContext localContext;
+          auto clonedModule = mutationPoint->getOriginalModule()->clone(localContext);
+          mutationPoint->applyMutation(*clonedModule.get());
 
-            auto owningObject = toolchain.compiler().compileModule(*clonedModule.get());
+          /// Memory grows here
+          auto owningObject = toolchain.compiler().compileModule(*clonedModule.get());
 
-            mutant = owningObject.getBinary();
-            toolchain.cache().putObject(std::move(owningObject), *mutationPoint);
-          }
+          ObjectFile *mutant = owningObject.getBinary();
+          /// The mutant is not escaping, it is removed few lines later
           ObjectFiles.push_back(mutant);
 
-          const auto sandboxTimeout = std::max(30LL,
-                                               ExecResult.runningTime * 10);
+          const auto sandboxTimeout = std::max(30LL, ExecResult.runningTime * 10);
 
           result = Sandbox->run([&]() {
             ExecutionStatus status = Runner.runTest(BorrowedTest, ObjectFiles);
@@ -227,6 +243,7 @@ std::unique_ptr<Result> Driver::Run() {
             return status;
           }, sandboxTimeout);
 
+          /// The mutant removed
           ObjectFiles.pop_back();
 
           assert(result.status != ExecutionStatus::Invalid &&
@@ -237,6 +254,8 @@ std::unique_ptr<Result> Driver::Run() {
 
         auto mutationResult = make_unique<MutationResult>(result, mutationPoint, testee->getDistance());
         Result->addMutantResult(std::move(mutationResult));
+
+        reportMemory("Driver::run> run mutant");
       }
 
       Logger::debug() << "\n";
