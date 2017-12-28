@@ -86,6 +86,8 @@ std::unique_ptr<Result> Driver::Run() {
   std::vector<unique_ptr<MullModule>> modules =
     Loader.loadModulesFromBitcodeFileList(bitcodePaths);
 
+  size_t mutantsCount = 0;
+
   for (auto &ownedModule : modules) {
     MullModule &module = *ownedModule.get();
     assert(ownedModule && "Can't load module");
@@ -102,20 +104,30 @@ std::unique_ptr<Result> Driver::Run() {
         if (function.isDeclaration()) {
           continue;
         }
-        CallTreeFunction callTreeFunction(&function);
-        uint64_t index = functions.size();
-        functions.push_back(callTreeFunction);
-        auto clonedFunction = clonedModule->getModule()->getFunction(function.getName());
-        injectCallbacks(clonedFunction, index);
+
+        Testee testee(&function, 0);
+        auto points = mutationsFinder.getMutationPoints(Ctx, testee, filter);
+
+        mutantsCount += points.size();
+
+//        CallTreeFunction callTreeFunction(&function);
+//        uint64_t index = functions.size();
+//        functions.push_back(callTreeFunction);
+//        auto clonedFunction = clonedModule->getModule()->getFunction(function.getName());
+//        injectCallbacks(clonedFunction, index);
       }
 
-      auto owningObjectFile = toolchain.compiler().compileModule(*clonedModule.get());
-      objectFile = owningObjectFile.getBinary();
-      toolchain.cache().putObject(std::move(owningObjectFile), module);
+      errs() << mutantsCount << " so far\n";
+//      auto owningObjectFile = toolchain.compiler().compileModule(*clonedModule.get());
+//      objectFile = owningObjectFile.getBinary();
+//      toolchain.cache().putObject(std::move(owningObjectFile), module);
     }
 
-    InnerCache.insert(std::make_pair(module.getModule(), objectFile));
+//    InnerCache.insert(std::make_pair(module.getModule(), objectFile));
   }
+
+  errs() << "Found " << mutantsCount << " mutants\n";
+  exit(166);
 
   for (std::string &objectFilePath: Cfg.getObjectFilesPaths()) {
     ErrorOr<std::unique_ptr<MemoryBuffer>> buffer =
