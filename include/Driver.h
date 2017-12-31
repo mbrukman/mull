@@ -1,7 +1,8 @@
 #pragma once
 
 #include "Config.h"
-#include "TestResult.h"
+#include "ExecutionResult.h"
+#include "MutationResult.h"
 #include "ForkProcessSandbox.h"
 #include "IDEDiagnostics.h"
 #include "Context.h"
